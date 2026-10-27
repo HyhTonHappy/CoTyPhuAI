@@ -780,14 +780,20 @@ async function resolve(p){
           <div class="mbtns"><button class="btn main" data-v="buy">Mua đất</button><button class="btn" data-v="skip">Bỏ qua</button></div>`);
         if(v==='buy'){p.money-=t.price;S.own[i]={p:p.id,lv:0};log(`${p.name} mua ${t.n} giá ${fmt(t.price)}.`);sfx.coin();toast(`Đã mua ${t.n}`);
           moneyFx(cardEl(p),$('#t'+i),t.price,false);renderTiles();tileAnim(i,'stamp');sparks($('#t'+i));
-          if(fullSet(p.id,t.g))toast('Đủ bộ màu! Có thể xây nhà')}
+          if(fullSet(p.id,t.g))toast('Đủ bộ màu! Tiền thuê đất trống ×2')}
       }else await info(esc(t.n),`Giá ${fmt(t.price)} nhưng bạn chỉ có ${fmt(p.money)}. Chưa mua được.`);
     }else if(o.p!==p.id){
       const ow=byId(o.p),r=rentOf(i);
       await info(`Trả tiền thuê ${fmt(r)}`,`${esc(t.n)} thuộc về <b>${esc(ow.name)}</b>${o.lv?` (nhà cấp ${o.lv})`:''}.`,'Trả tiền','red',IMG['p'+ow.id]);
       pay(p,r,ow,`trả thuê ${t.n}`);
       await offerBuyout(p,i);
-    }else toast('Đất của bạn');
+    }else if(o.lv<5&&canBuild(p,i)){const nl=o.lv+1;
+      const v=await modal(`<div class="tinfo"><img src="${IMG['h'+nl]}" alt=""><div><h3>${esc(t.n)}</h3>
+        <p>Đây là đất của bạn${o.lv?` (đang có nhà cấp ${o.lv})`:''}. Xây <b>nhà cấp ${nl}</b> với giá <b>${fmt(HOUSE[nl])}</b>?</p>
+        <p style="font-size:1rem;color:var(--ink-soft)">Tiền thuê sẽ tăng từ ${rentOf(i)} lên <b>${t.price/10*MULT[nl]} triệu</b>. Bạn đang có ${fmt(p.money)}.</p></div></div>
+        <div class="mbtns"><button class="btn go" data-v="build">Xây nhà cấp ${nl}</button><button class="btn" data-v="skip">Để sau</button></div>`);
+      if(v==='build')buildHouse(p,i);
+    }else toast(o.lv>=5?'Đất của bạn · nhà cấp 5 tối đa':'Đất của bạn');
   }
   else if(t.t==='ch'||t.t==='vk')await chance(p,t.t);
   else if(t.t==='tax'){await info('Nộp thuế',`Nộp ${TAX} triệu tiền thuế cho ngân hàng.`,'Nộp thuế','red',IMG.t_thue);pay(p,TAX,null,'nộp thuế')}
@@ -814,7 +820,7 @@ async function offerBuyout(p,i){
   if(v!=='buy')return;
   p.money-=bp;ow.money+=bp;o.p=p.id;log(`${p.name} mua lại ${t.n} từ ${ow.name} giá ${fmt(bp)}.`);
   sfx.good();moneyFx(cardEl(p),cardEl(ow),bp,false);renderTiles();renderPlayers();tileAnim(i,'stamp');sparks($('#t'+i),16);
-  toast(`Đã mua lại ${t.n}`);if(fullSet(p.id,t.g))setTimeout(()=>toast('Đủ bộ màu! Có thể xây nhà'),1300);
+  toast(`Đã mua lại ${t.n}`);if(fullSet(p.id,t.g))setTimeout(()=>toast('Đủ bộ màu! Tiền thuê đất trống ×2'),1300);
 }
 /* ---------- questions ---------- */
 function nextQ(){if(S.qPtr>=S.qOrder.length){S.qOrder=shuffle([...Q.keys()]);S.qPtr=0}return S.qOrder[S.qPtr++]}
@@ -886,23 +892,25 @@ function nextTurn(){
 }
 
 /* ---------- build / sell ---------- */
-function canBuild(p,i){const o=S.own[i];return o&&o.p===p.id&&o.lv<5&&(!S.set.needSet||fullSet(p.id,TILES[i].g))&&p.money>=HOUSE[o.lv+1]&&S.phase!=='debt'}
+function canBuild(p,i){const o=S.own[i];return o&&o.p===p.id&&o.lv<5&&(!S.set.setRule||fullSet(p.id,TILES[i].g))&&p.money>=HOUSE[o.lv+1]&&S.phase!=='debt'}
+function buildHouse(p,i){const o=S.own[i];if(!canBuild(p,i))return;o.lv++;p.money-=HOUSE[o.lv];log(`${p.name} xây nhà cấp ${o.lv} ở ${TILES[i].n}.`);sfx.build();lastBuilt=i;
+  checkDebt();render();tileAnim(i,'stamp');sparks($('#t'+i),12,'★');floatNum(...ctr($('#t'+i)),'Nhà cấp '+o.lv,'var(--gold-dk)')}
 function manage(){
   const p=P();
   const draw=md=>{
     const ps=props(p).sort((a,b)=>a-b);
     md.querySelector('#mlist').innerHTML=ps.length?ps.map(i=>{const t=TILES[i],o=S.own[i];
-      const why=o.lv>=5?'Đã đạt cấp tối đa':S.set.needSet&&!fullSet(p.id,t.g)?'Cần đủ bộ màu':S.phase==='debt'?'Đang nợ':p.money<HOUSE[o.lv+1]?'Không đủ tiền':'';
+      const why=o.lv>=5?'Đã đạt cấp tối đa':S.set.setRule&&!fullSet(p.id,t.g)?'Cần đủ bộ màu':S.phase==='debt'?'Đang nợ':p.money<HOUSE[o.lv+1]?'Không đủ tiền':'';
       return `<div class="mrow" style="--gc:${GC[t.g]}"><div class="dot"></div>
         <div class="t">${esc(t.n)} ${o.lv?'<span style="color:var(--gold-dk)">'+'★'.repeat(o.lv)+'</span>':''}<small>${o.lv?'Nhà cấp '+o.lv:'Đất trống'} · thuê ${rentOf(i)} triệu${why?' · '+why:''}</small></div>
         <div class="b">${o.lv<5?`<button class="btn go" data-b="${i}" ${canBuild(p,i)?'':'disabled'}>Xây cấp ${o.lv+1} (−${HOUSE[o.lv+1]})</button>`:''}
         ${o.lv>0?`<button class="btn" data-s="${i}">Bán nhà (+${HOUSE[o.lv]/2})</button>`:`<button class="btn red" data-l="${i}">Bán đất (+${t.price/2})</button>`}</div></div>`}).join('')
       :'<p>Chưa sở hữu mảnh đất nào.</p>';
     md.querySelector('#mcash').textContent=fmt(p.money);
-    md.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{const i=+b.dataset.b,o=S.own[i];o.lv++;p.money-=HOUSE[o.lv];log(`${p.name} xây nhà cấp ${o.lv} ở ${TILES[i].n}.`);sfx.build();lastBuilt=i;after();tileAnim(i,'stamp');sparks($('#t'+i),12,'★');floatNum(...ctr($('#t'+i)),'Nhà cấp '+o.lv,'var(--gold-dk)')});
+    md.querySelectorAll('[data-b]').forEach(b=>b.onclick=()=>{buildHouse(p,+b.dataset.b);draw(md)});
     md.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{const i=+b.dataset.s,o=S.own[i];p.money+=HOUSE[o.lv]/2;log(`${p.name} bán nhà cấp ${o.lv} ở ${TILES[i].n}.`);o.lv--;sfx.coin();after()});
     md.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{const i=+b.dataset.l;const t=TILES[i];
-      if(S.set.needSet&&groupTiles(t.g).some(j=>S.own[j]&&S.own[j].p===p.id&&S.own[j].lv>0)){toast('Bán hết nhà trong bộ màu trước');return}
+      if(S.set.setRule&&groupTiles(t.g).some(j=>S.own[j]&&S.own[j].p===p.id&&S.own[j].lv>0)){toast('Bán hết nhà trong bộ màu trước');return}
       p.money+=t.price/2;delete S.own[i];log(`${p.name} bán ${t.n} cho ngân hàng.`);sfx.coin();after()});
     function after(){checkDebt();render();draw(md)}
   };
@@ -967,7 +975,7 @@ function rules(){
    <li>Mỗi nhóm bắt đầu ở ô <b>Bắt đầu</b> với số vốn đã chọn. Lần lượt đổ 2 xúc xắc và đi theo chiều kim đồng hồ.</li>
    <li>Đi qua hoặc dừng ở ô Bắt đầu được nhận <b>${GO_BONUS} triệu</b>.</li>
    <li>Dừng ở đất chưa có chủ thì được <b>mua</b>. Dừng ở đất của nhóm khác thì phải <b>trả tiền thuê</b>.</li>
-   <li>Sở hữu <b>đủ bộ màu</b> thì tiền thuê đất trống tăng gấp đôi và được <b>xây nhà</b> từ cấp 1 đến cấp 5 (10, 20, 50, 100, 200 triệu). Nhà càng cao, tiền thuê càng lớn.</li>
+   <li>Đất đã mua thì được <b>xây nhà</b> từ cấp 1 đến cấp 5 (10, 20, 50, 100, 200 triệu): bấm <b>Xây / bán nhà</b> bất cứ lúc nào trong lượt của mình, hoặc xây ngay khi dừng lại ở đất của mình. Nhà càng cao, tiền thuê càng lớn. Sở hữu <b>đủ bộ màu</b> thì tiền thuê đất trống tăng gấp đôi.${S&&S.set.setRule?' <i>(Ván này bật luật: phải đủ bộ màu mới được xây nhà.)</i>':''}</li>
    <li><b>Mua lại nhà người khác</b>: sau khi trả tiền thuê, có thể mua lại đất đó (kể cả nhà trên đất) với giá ${buyMult()?'×'+String(buyMult()).replace('.',',')+' giá trị':'(đang tắt)'}. Tiền trả cho chủ cũ, chủ cũ không được từ chối. <b>Nhà cấp 5</b> không thể bị mua lại.</li>
    <li>Dừng ở ô <b>Cơ hội</b> hoặc <b>Vận khí</b>: phải <b>trả lời đúng 1 câu hỏi</b> mới được bốc thẻ. Trả lời sai thì <b>vào tù</b>.</li>
    <li>Đổ được đôi thì được đổ thêm. Đổ đôi 3 lần liên tiếp thì vào tù. Dừng ở ô <b>Vào tù</b> cũng vào tù.</li>
@@ -993,7 +1001,7 @@ function showSetup(){
       <label>Vốn ban đầu<select id="sStart"><option value="1000">1 tỷ</option><option value="1500" selected>1,5 tỷ</option><option value="2000">2 tỷ</option></select></label>
       <label>Thời gian trả lời<select id="sTime"><option value="0">Không giới hạn</option><option value="20">20 giây</option><option value="30" selected>30 giây</option><option value="45">45 giây</option><option value="60">60 giây</option></select></label>
       <label>Mua lại nhà người khác<select id="sBuy"><option value="0">Không cho mua lại</option><option value="1.5" selected>Giá ×1,5</option><option value="2">Giá ×2</option></select></label>
-      <label class="ck"><input type="checkbox" id="sSet" checked>Đủ bộ màu mới được xây nhà</label>
+      <label class="ck"><input type="checkbox" id="sSet">Bắt buộc đủ bộ màu mới được xây nhà (khó)</label>
       <label class="ck"><input type="checkbox" id="sJq" checked>Cho trả lời câu hỏi để ra tù</label>
     </div>
     <div class="sact">
@@ -1006,7 +1014,7 @@ function showSetup(){
   $('#sGo').onclick=()=>{
     const ps=on.map((v,k)=>v?{id:k,name:($('#pn'+k).value.trim()||PDEF[k])}:null).filter(Boolean);
     if(ps.length<2){info('Cần ít nhất 2 nhóm','Bấm vào hình nhân vật để chọn nhóm tham gia.');return}
-    newGame(ps,{start:+$('#sStart').value,qTime:+$('#sTime').value,needSet:$('#sSet').checked,jailQ:$('#sJq').checked,buyMult:+$('#sBuy').value});
+    newGame(ps,{start:+$('#sStart').value,qTime:+$('#sTime').value,setRule:$('#sSet').checked,jailQ:$('#sJq').checked,buyMult:+$('#sBuy').value});
     el.hidden=true;render();
   };
   if(saved)$('#sResume').onclick=()=>{S=saved;if(!['roll','again','end','jail','debt'].includes(S.phase))S.phase='end';el.hidden=true;render()};
@@ -1023,7 +1031,7 @@ function start(data){
   if(data&&data.S){S=data.S;if(!['roll','again','end','jail','debt'].includes(S.phase))S.phase='end';render()}
   else{
     // demo state behind the setup screen so the board never looks empty
-    newGame([{id:0,name:PDEF[0]},{id:1,name:PDEF[1]},{id:2,name:PDEF[2]},{id:3,name:PDEF[3]}],{start:1500,qTime:30,needSet:true,jailQ:true,buyMult:1.5});
+    newGame([{id:0,name:PDEF[0]},{id:1,name:PDEF[1]},{id:2,name:PDEF[2]},{id:3,name:PDEF[3]}],{start:1500,qTime:30,setRule:false,jailQ:true,buyMult:1.5});
     renderTiles();renderHUD();renderPlayers();showSetup();
   }
 }
